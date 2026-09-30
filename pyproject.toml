@@ -189,6 +189,9 @@ ignore = [
 "tests/**/*.py" = ["S101", "S105", "S106", "ARG001", "ARG002", "PLR2004"]
 "migrations/**/*.py" = ["E501", "I001", "N999"]
 "scripts/**/*.py" = ["T201"]
+# API routes: dependency-injected args are unused until services land
+"src/docu_mind/api/v1/routes/**/*.py" = ["ARG001"]
+"src/docu_mind/api/deps.py" = ["ARG001"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["docu_mind"]
