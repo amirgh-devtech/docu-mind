@@ -1,0 +1,123 @@
+﻿==================================================
+Project Structure: docu-mind
+Generated on: 2026-09-30 22:55:40
+==================================================
+.
+├── migrations
+│   ├── versions
+│   │   └── .gitkeep
+│   └── README
+├── scripts
+│   ├── __init__.py
+│   ├── evaluate.py
+│   ├── ingest_sample.py
+│   └── seed.py
+├── src
+│   └── docu_mind
+│       ├── api
+│       │   ├── v1
+│       │   │   ├── routes
+│       │   │   │   ├── __init__.py
+│       │   │   │   ├── chat.py
+│       │   │   │   ├── documents.py
+│       │   │   │   ├── health.py
+│       │   │   │   └── search.py
+│       │   │   ├── __init__.py
+│       │   │   └── router.py
+│       │   ├── __init__.py
+│       │   ├── app.py
+│       │   └── deps.py
+│       ├── core
+│       │   ├── __init__.py
+│       │   ├── config.py
+│       │   ├── embeddings.py
+│       │   ├── exceptions.py
+│       │   ├── llm.py
+│       │   └── logging.py
+│       ├── db
+│       │   ├── models
+│       │   │   ├── __init__.py
+│       │   │   ├── chunk.py
+│       │   │   ├── conversation.py
+│       │   │   ├── document.py
+│       │   │   └── message.py
+│       │   ├── __init__.py
+│       │   ├── base.py
+│       │   └── session.py
+│       ├── schemas
+│       │   ├── __init__.py
+│       │   ├── chat.py
+│       │   ├── chunk.py
+│       │   ├── common.py
+│       │   ├── document.py
+│       │   └── search.py
+│       ├── services
+│       │   ├── chunking
+│       │   │   ├── __init__.py
+│       │   │   ├── base.py
+│       │   │   ├── contextual.py
+│       │   │   └── recursive.py
+│       │   ├── embedding
+│       │   │   ├── __init__.py
+│       │   │   └── service.py
+│       │   ├── ingestion
+│       │   │   ├── __init__.py
+│       │   │   ├── base.py
+│       │   │   ├── docx.py
+│       │   │   ├── markdown.py
+│       │   │   ├── pdf.py
+│       │   │   └── pipeline.py
+│       │   ├── rag
+│       │   │   ├── __init__.py
+│       │   │   ├── base.py
+│       │   │   ├── citations.py
+│       │   │   ├── context.py
+│       │   │   ├── engine.py
+│       │   │   └── prompts.py
+│       │   ├── reranking
+│       │   │   ├── __init__.py
+│       │   │   ├── base.py
+│       │   │   ├── cohere.py
+│       │   │   └── local.py
+│       │   ├── retrieval
+│       │   │   ├── __init__.py
+│       │   │   ├── base.py
+│       │   │   ├── dense.py
+│       │   │   ├── hybrid.py
+│       │   │   ├── keyword.py
+│       │   │   └── service.py
+│       │   └── __init__.py
+│       ├── utils
+│       │   ├── __init__.py
+│       │   ├── hashing.py
+│       │   ├── text.py
+│       │   ├── time.py
+│       │   └── tokens.py
+│       ├── __init__.py
+│       └── __main__.py
+├── tests
+│   ├── e2e
+│   │   ├── .gitkeep
+│   │   └── __init__.py
+│   ├── eval
+│   │   ├── .gitkeep
+│   │   └── __init__.py
+│   ├── integration
+│   │   ├── .gitkeep
+│   │   └── __init__.py
+│   ├── unit
+│   │   ├── .gitkeep
+│   │   └── __init__.py
+│   ├── __init__.py
+│   └── conftest.py
+├── .dockerignore
+├── .env
+├── .env.example
+├── .gitattributes
+├── .gitignore
+├── .python-version
+├── LICENSE
+├── main.py
+├── pyproject.toml
+├── README.md
+└── uv.lock
