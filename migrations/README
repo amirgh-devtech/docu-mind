@@ -1,2 +1,1 @@
-Alembic migrations for docu-mind.
-Will be initialized in step 5 with pgvector extension.
+Generic single-database configuration with an async dbapi.

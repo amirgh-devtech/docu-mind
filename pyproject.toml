@@ -237,6 +237,7 @@ module = [
     "docx.*",
     "markdown_it.*",
     "testcontainers.*",
+    "pgvector.*",
 ]
 ignore_missing_imports = true
 
