@@ -1,8 +1,21 @@
 ﻿==================================================
 Project Structure: docu-mind
-Generated on: 2026-09-30 22:55:40
+Generated on: 2026-09-30 23:06:52
 ==================================================
 .
+├── .mypy_cache
+│   ├── 3.12
+│   │   └── cache.db
+│   ├── .gitignore
+│   ├── CACHEDIR.TAG
+│   └── missing_stubs
+├── .ruff_cache
+│   ├── 0.8.6
+│   │   ├── 14310842143256942353
+│   │   ├── 18009531243455325981
+│   │   └── 2751629190303121274
+│   ├── .gitignore
+│   └── CACHEDIR.TAG
 ├── migrations
 │   ├── versions
 │   │   └── .gitkeep
@@ -117,7 +130,6 @@ Generated on: 2026-09-30 22:55:40
 ├── .gitignore
 ├── .python-version
 ├── LICENSE
-├── main.py
 ├── pyproject.toml
 ├── README.md
 └── uv.lock
