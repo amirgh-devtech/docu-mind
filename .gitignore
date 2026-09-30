@@ -1,10 +1,81 @@
-# Python-generated files
+# === Python ===
 __pycache__/
-*.py[oc]
+*.py[cod]
+*$py.class
+*.so
+.Python
 build/
+develop-eggs/
 dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
 wheels/
-*.egg-info
+*.egg-info/
+.installed.cfg
+*.egg
 
-# Virtual environments
-.venv
+# === Virtualenv / uv ===
+.venv/
+venv/
+ENV/
+env/
+.uv-cache/
+
+# === Test / Coverage ===
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+
+# === Type checkers / Linters ===
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.ruff_cache/
+.pytype/
+
+# === Env ===
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# === IDE ===
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json.example
+.idea/
+*.swp
+*.swo
+*~
+
+# === OS ===
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# === Project specific ===
+*.log
+logs/
+data/
+tmp/
+uploads/
+models/
+*.gguf
+*.bin
+
+# === RAG / Evaluation ===
+eval_results/
+*.pkl
+*.npy
+*.parquet

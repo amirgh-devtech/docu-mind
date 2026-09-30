@@ -1,0 +1,55 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# CI
+.github
+
+# Python cache
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+
+# Virtualenv
+.venv
+venv
+ENV
+env
+
+# Test / Coverage
+.pytest_cache
+.coverage
+.coverage.*
+htmlcov
+.tox
+.nox
+coverage.xml
+
+# Linters
+.mypy_cache
+.ruff_cache
+.dmypy.json
+
+# Env
+.env
+.env.*
+!.env.example
+
+# IDE / OS
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+# Project
+logs
+data
+tmp
+uploads
+models
+*.log
+README.md
+docs
+tests
