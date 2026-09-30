@@ -89,6 +89,9 @@ def configure_logging() -> None:
     for noisy in ("uvicorn.access", "uvicorn.error", "sqlalchemy.engine"):
         logging.getLogger(noisy).setLevel(max(level, logging.WARNING))
 
+    logging.getLogger("LiteLLM").setLevel(logging.ERROR)
+    logging.getLogger("litellm").setLevel(logging.ERROR)
+
     # uvicorn loggers should propagate to root
     for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
         lg = logging.getLogger(name)

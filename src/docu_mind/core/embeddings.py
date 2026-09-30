@@ -1,22 +1,21 @@
-"""Embedding service wrapper over OpenAI.
+"""Embedding service wrapper over LiteLLM (Gemini / OpenAI).
 
-Uses the OpenAI SDK directly (not litellm) because embeddings are
-provider-locked in practice and the SDK is lighter for batch use.
+Uses LiteLLM's `embedding()` so we're provider-agnostic. In eco mode
+we default to Gemini's `gemini-embedding-001` (free tier).
 
 Handles:
 - Batching
 - Retry with backoff
-- Dimensionality truncation (Pro mode: large → 1024)
-- Normalisation for cosine similarity
+- Dimensionality truncation (Matryoshka)
+- L2-normalisation for cosine similarity
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import cast
 
+import litellm
 import numpy as np
-from openai import APIError, APITimeoutError, AsyncOpenAI
 from tenacity import (
     AsyncRetrying,
     retry_if_exception_type,
@@ -46,15 +45,6 @@ class EmbeddingClient:
 
     def __init__(self, settings: Settings | None = None) -> None:
         self._settings = settings or get_settings()
-        if not self._settings.openai_api_key:
-            msg = "OPENAI_API_KEY is required for embeddings"
-            raise EmbeddingError(msg)
-
-        self._client = AsyncOpenAI(
-            api_key=self._settings.openai_api_key,
-            timeout=60.0,
-            max_retries=0,  # we handle retries ourselves
-        )
 
     @property
     def model(self) -> str:
@@ -70,18 +60,7 @@ class EmbeddingClient:
         *,
         batch_size: int | None = None,
     ) -> EmbeddingResult:
-        """Embed a list of texts, with batching.
-
-        Args:
-            texts: List of strings to embed.
-            batch_size: Override default batch size.
-
-        Returns:
-            EmbeddingResult with a list of vectors, in the same order.
-
-        Raises:
-            EmbeddingError: On API failure after retries.
-        """
+        """Embed a list of texts, with batching."""
         if not texts:
             return EmbeddingResult(
                 vectors=[],
@@ -108,66 +87,60 @@ class EmbeddingClient:
         )
 
     async def embed_query(self, text: str) -> list[float]:
-        """Embed a single query string.
-
-        Args:
-            text: Query text.
-
-        Returns:
-            A single embedding vector.
-        """
+        """Embed a single query string."""
         result = await self._embed_batch([text])
         return result.vectors[0]
 
     async def _embed_batch(self, batch: list[str]) -> EmbeddingResult:
         """Embed a single batch with retry/backoff."""
-        # For Pro mode, we truncate large embeddings to the target dim.
+        # For Matryoshka models (Gemini Embedding, OpenAI v3), we can
+        # request a smaller dimension.
+        model = self.model
         extra: dict[str, object] = {}
-        if self._settings.docu_mind_mode == "pro":
-            extra["dimensions"] = self._settings.embedding_dim_pro
+
+        # Gemini Embedding uses `output_dimensionality`
+        if model.startswith("gemini/"):
+            extra["dimensions"] = self._settings.active_embedding_dim
+        # OpenAI v3 uses `dimensions`
+        elif model.startswith("text-embedding-3"):
+            extra["dimensions"] = self._settings.active_embedding_dim
 
         async for attempt in AsyncRetrying(
             stop=stop_after_attempt(self._settings.llm_max_retries),
             wait=wait_exponential(multiplier=1, min=1, max=10),
-            retry=retry_if_exception_type((APITimeoutError, APIError)),
+            retry=retry_if_exception_type((TimeoutError, ConnectionError)),
             reraise=True,
         ):
             with attempt:
                 try:
-                    response = await self._client.embeddings.create(
-                        model=self.model,
+                    response = await litellm.aembedding(
+                        model=model,
                         input=batch,
                         **extra,  # type: ignore[arg-type]
                     )
-                except (APITimeoutError, APIError) as e:
+                except Exception as e:  # noqa: BLE001
                     logger.warning("embedding.attempt_failed", error=str(e))
-                    raise
-                except Exception as e:
-                    msg = f"Embedding failed: {e}"
-                    raise EmbeddingError(msg) from e
+                    raise EmbeddingError(f"Embedding failed: {e}") from e
 
-        vectors = [item.embedding for item in response.data]
-
-        # Normalise for cosine similarity (pgvector's <=> uses cosine distance,
-        # which is equivalent to L2 on normalised vectors).
+        vectors = [item["embedding"] for item in response.data]
         vectors = [_normalise(v) for v in vectors]
 
         return EmbeddingResult(
             vectors=vectors,
-            model=self.model,
+            model=model,
             dimensions=len(vectors[0]) if vectors else self.dimensions,
             total_tokens=getattr(response.usage, "total_tokens", 0),
         )
 
     async def aclose(self) -> None:
-        """Close the underlying HTTP client."""
-        await self._client.close()
+        """LiteLLM doesn't need explicit closing."""
+        return
 
 
 def _normalise(vec: list[float]) -> list[float]:
-    """L2-normalise a vector. Zero vectors are returned unchanged."""
+    """L2-normalise a vector."""
     arr = np.asarray(vec, dtype=np.float32)
     norm = float(np.linalg.norm(arr))
     if norm == 0.0:
-        return arr.tolist()
-    return cast("list[float]", (arr / norm).tolist())
+        return [float(x) for x in arr.tolist()]
+    return [float(x) for x in (arr / norm).tolist()]

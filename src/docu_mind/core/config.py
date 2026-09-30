@@ -83,10 +83,10 @@ class Settings(BaseSettings):
     # ─────────────────────────────────────────────
     # Embedding
     # ─────────────────────────────────────────────
-    embedding_provider: Literal["openai"] = "openai"
-    embedding_model_eco: str = "text-embedding-3-small"
+    embedding_provider: Literal["openai", "gemini"] = "gemini"
+    embedding_model_eco: str = "gemini-embedding-001"
+    embedding_dim_eco: int = 1536
     embedding_model_pro: str = "text-embedding-3-large"
-    embedding_dim_eco: int = Field(default=1536, ge=1)
     embedding_dim_pro: int = Field(default=1024, ge=1)  # truncated large
     embedding_batch_size: int = Field(default=100, ge=1, le=2048)
 
