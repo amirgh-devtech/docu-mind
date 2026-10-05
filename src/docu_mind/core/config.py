@@ -154,6 +154,13 @@ class Settings(BaseSettings):
     # ─────────────────────────────────────────────
     rag_context_token_budget: int = Field(default=6000, ge=500, le=100000)
 
+    #: Maximum number of prior messages (user+assistant) to include.
+    #: 0 = no history (stateless).
+    rag_max_history_messages: int = Field(default=10, ge=0, le=50)
+
+    #: Whether to include the conversation history in the LLM call.
+    rag_include_history: bool = True
+
     # ─────────────────────────────────────────────
     # Uploads
     # ─────────────────────────────────────────────
@@ -196,30 +203,45 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _check_required_keys(self) -> Settings:
         """Validate that the keys needed for the current mode are present."""
+        # ── LLM providers ──
         if self.docu_mind_mode == "eco":
-            # Eco needs at least one LLM provider + OpenAI for embeddings
             if not any([self.gemini_api_key, self.groq_api_key, self.openai_api_key]):
                 msg = (
                     "Eco mode requires at least one of: "
                     "GEMINI_API_KEY, GROQ_API_KEY, OPENAI_API_KEY"
                 )
                 raise ValueError(msg)
-            if not self.openai_api_key:
-                msg = "Eco mode requires OPENAI_API_KEY for embeddings"
-                raise ValueError(msg)
-        else:  # pro
-            if not self.gemini_api_key and not self.openai_api_key and not self.anthropic_api_key:
-                msg = (
-                    "Pro mode requires at least one of: "
-                    "GEMINI_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY"
-                )
-                raise ValueError(msg)
-            if not self.openai_api_key:
-                msg = "Pro mode requires OPENAI_API_KEY for embeddings"
-                raise ValueError(msg)
-            if not self.cohere_api_key:
-                msg = "Pro mode requires COHERE_API_KEY for reranking"
-                raise ValueError(msg)
+        elif not any(
+            [
+                self.gemini_api_key,
+                self.openai_api_key,
+                self.anthropic_api_key,
+            ]
+        ):  # pro
+            msg = (
+                "Pro mode requires at least one of: "
+                "GEMINI_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY"
+            )
+            raise ValueError(msg)
+
+        # ── Embedding provider-specific keys ──
+        if self.embedding_provider == "openai" and not self.openai_api_key:
+            msg = "EMBEDDING_PROVIDER=openai requires OPENAI_API_KEY"
+            raise ValueError(msg)
+
+        if self.embedding_provider == "gemini" and not self.gemini_api_key:
+            msg = "EMBEDDING_PROVIDER=gemini requires GEMINI_API_KEY"
+            raise ValueError(msg)
+
+        # ── Pro-mode: Cohere reranker ──
+        if (
+            self.docu_mind_mode == "pro"
+            and self.reranker_provider_pro == "cohere"
+            and not self.cohere_api_key
+        ):
+            msg = "Pro mode with Cohere reranker requires COHERE_API_KEY"
+            raise ValueError(msg)
+
         return self
 
     # ─────────────────────────────────────────────

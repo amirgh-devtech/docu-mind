@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import time
 import uuid
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from docu_mind.core.config import Settings, get_settings
@@ -71,6 +72,9 @@ class RAGEngine:
         """Run a RAG query end-to-end (non-streaming)."""
         start = time.monotonic()
 
+        # 0. Load conversation history (if continuing)
+        history = await self._load_history(db, conversation_id)
+
         # 1. Retrieve
         chunks = await self._retrieval.search(
             db,
@@ -82,21 +86,25 @@ class RAGEngine:
         # 2. Build context
         context = self._context.build(chunks)
 
-        # 3. LLM call
+        # 3. Build messages (system + history + current query+context)
         prompt = build_rag_prompt(query, [b.text for b in context.blocks])
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            *history,
+            {"role": "user", "content": prompt},
+        ]
+
+        # 4. LLM call
         response = await self._llm.complete(
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": prompt},
-            ],
+            messages=messages,
             kind="smart",
             temperature=temperature,
         )
 
-        # 4. Citations
+        # 5. Citations
         citations = build_citations(response.content, context)
 
-        # 5. Persist
+        # 6. Persist
         conversation, message = await self._persist(
             db,
             query=query,
@@ -108,8 +116,6 @@ class RAGEngine:
             latency_ms=int((time.monotonic() - start) * 1000),
         )
 
-        latency_ms = int((time.monotonic() - start) * 1000)
-
         return RAGResult(
             answer=response.content,
             citations=citations,
@@ -119,7 +125,7 @@ class RAGEngine:
             model=response.model,
             prompt_tokens=response.prompt_tokens,
             completion_tokens=response.completion_tokens,
-            latency_ms=latency_ms,
+            latency_ms=int((time.monotonic() - start) * 1000),
         )
 
     # ─────────────────────────────────────────────
@@ -135,17 +141,13 @@ class RAGEngine:
         rerank_top_k: int | None = None,
         temperature: float | None = None,
     ) -> AsyncIterator[dict[str, object]]:
-        """Stream a RAG answer as events.
-
-        Yields dicts that the API layer will serialize to SSE:
-        - {"type": "citations", "citations": [...]}
-        - {"type": "token", "content": "..."}
-        - {"type": "done", "conversation_id": ..., "message_id": ..., ...}
-        - {"type": "error", "error": "..."}
-        """
+        """Stream a RAG answer as events."""
         start = time.monotonic()
 
         try:
+            # 0. Load history
+            history = await self._load_history(db, conversation_id)
+
             # 1. Retrieve
             chunks = await self._retrieval.search(
                 db,
@@ -154,17 +156,18 @@ class RAGEngine:
                 rerank_top_k=rerank_top_k,
             )
 
-            # 2. Build context
+            # 2. Context
             context = self._context.build(chunks)
 
-            # 3. Emit citations first (client can show them while streaming)
+            # 3. Emit citations first
             citations = [_chunk_to_citation_dict(c) for c in context.chunk_map.values()]
             yield {"type": "citations", "citations": citations}
 
-            # 4. Stream LLM tokens
+            # 4. Stream LLM
             prompt = build_rag_prompt(query, [b.text for b in context.blocks])
             messages = [
                 {"role": "system", "content": SYSTEM_PROMPT},
+                *history,
                 {"role": "user", "content": prompt},
             ]
 
@@ -179,7 +182,7 @@ class RAGEngine:
 
             answer = "".join(answer_parts)
 
-            # 5. Extract citations from final answer
+            # 5. Final citations
             final_citations = build_citations(answer, context)
 
             # 6. Persist
@@ -189,7 +192,7 @@ class RAGEngine:
                 answer=answer,
                 citations=final_citations,
                 conversation_id=conversation_id,
-                prompt_tokens=0,  # not available in stream mode
+                prompt_tokens=0,
                 completion_tokens=0,
                 latency_ms=int((time.monotonic() - start) * 1000),
             )
@@ -204,6 +207,53 @@ class RAGEngine:
         except Exception as e:
             logger.exception("rag.stream_failed")
             yield {"type": "error", "error": str(e)}
+
+    # ─────────────────────────────────────────────
+    # Helpers
+    # ─────────────────────────────────────────────
+    async def _load_history(
+        self,
+        db: AsyncSession,
+        conversation_id: uuid.UUID | None,
+    ) -> list[dict[str, str]]:
+        if not self._settings.rag_include_history:
+            return []
+        if conversation_id is None:
+            return []
+
+        max_n = self._settings.rag_max_history_messages
+        if max_n <= 0:
+            return []
+
+        stmt = (
+            select(Message)
+            .where(Message.conversation_id == conversation_id)
+            .where(Message.role.in_(("user", "assistant")))
+            .order_by(Message.created_at.desc())
+            .limit(max_n)
+        )
+        result = await db.execute(stmt)
+        rows = list(result.scalars().all())
+        rows.reverse()  # oldest → newest
+
+        # Token-budgeted history: keep dropping oldest until it fits
+        budget = self._settings.rag_context_token_budget // 2  # half for history
+        history: list[dict[str, str]] = []
+        total = 0
+        for msg in rows:
+            tokens = self._llm.count_tokens(msg.content)
+            if total + tokens > budget:
+                break
+            history.append({"role": msg.role, "content": msg.content})
+            total += tokens
+
+        logger.info(
+            "rag.history_loaded",
+            conversation_id=str(conversation_id),
+            messages=len(history),
+            tokens=total,
+        )
+        return history
 
     # ─────────────────────────────────────────────
     # Persistence
