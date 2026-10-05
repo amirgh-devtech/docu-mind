@@ -27,9 +27,9 @@
 | ---------------- | ------------------------------------------------- |
 | API              | FastAPI + Uvicorn                                 |
 | LLM abstraction  | LiteLLM (OpenAI / Anthropic / Gemini / Groq)      |
-| Embedding        | OpenAI text-embedding-3 (small/large)             |
-| Reranker         | local cross-encoder (Eco) / Cohere (Pro)          |
-| Storage          | PostgreSQL + pgvector (HNSW)                      |
+| Embedding        | Gemini Embedding 001 (1536 dim, Matryoshka)       |
+| Reranker         | local cross-encoder (Eco) / Cohere Rerank (Pro)   |
+| Storage          | PostgreSQL 17 + pgvector 0.8 (HNSW)               |
 | Keyword search   | PostgreSQL tsvector (GIN)                         |
 | Document parsing | pymupdf (PDF), python-docx (Word), markdown-it-py |
 | Container        | Docker + Docker Compose                           |
@@ -39,29 +39,30 @@
 
 ## 🎛️ Operating modes
 
+Switch mode via `DOCU_MIND_MODE=eco|pro` in `.env`.
+
 ### Eco mode (default) — lowest cost
 
-| Component | Choice                               | Cost                        |
-| --------- | ------------------------------------ | --------------------------- |
-| LLM       | Gemini 3.5 Flash-Lite                | $0.30 / $2.50 per 1M in/out |
-| Embedding | OpenAI text-embedding-3-small (1536) | $0.02 / 1M                  |
-| Reranker  | local ms-marco-MiniLM-L6-v2          | free                        |
+| Component | Choice                          | Cost         |
+| --------- | ------------------------------- | ------------ |
+| LLM       | Gemini 3.5 Flash-Lite           | free tier    |
+| Embedding | Gemini Embedding 001 (1536 dim) | free tier    |
+| Reranker  | local cross-encoder (MiniLM-L6) | free (local) |
 
 ### Pro mode — highest accuracy
 
 | Component | Choice                                                         | Cost            |
 | --------- | -------------------------------------------------------------- | --------------- |
-| LLM       | Gemini 3.6 Flash + fallback to GPT-5.4 mini / Claude Haiku 4.5 | higher          |
-| Embedding | OpenAI text-embedding-3-large (truncated to 1024)              | $0.13 / 1M      |
-| Reranker  | Cohere Rerank 4 Pro                                            | $2 / 1K queries |
-
-Switch mode via `DOCU_MIND_MODE=eco|pro` in `.env`.
+| LLM       | Gemini 3.6 Flash + fallback to GPT-5.4 mini / Claude Haiku 4.5 | pay-per-use     |
+| Embedding | Gemini Embedding 001 (1536 dim)                                | pay-per-use     |
+| Reranker  | Cohere Rerank v3.5                                             | $2 / 1K queries |
 
 ## 🚧 Technical challenges addressed
 
-- **Contextual Retrieval** — each chunk gets an LLM-generated summary prefix
-- **Hybrid Search** — dense (pgvector) + sparse (tsvector) fused with RRF
-- **Citation** — every answer includes source document + page/section
+- **Contextual Retrieval** — each chunk gets an LLM-generated context prefix before embedding
+- **Parent-Child chunking** — small child chunks are embedded; larger parents are returned for context
+- **Hybrid Search** — dense (pgvector HNSW) + sparse (tsvector GIN) fused with Reciprocal Rank Fusion
+- **Citation** — every answer includes source document + page/section + snippet
 - **Context window management** — token budget per LLM call, truncation strategy
 - **Evaluation** — ragas metrics: faithfulness, answer correctness, context precision
 
@@ -69,16 +70,16 @@ Switch mode via `DOCU_MIND_MODE=eco|pro` in `.env`.
 
 ```
 docu-mind/
-├── src/docu_mind/          # application code
-│   ├── api/                # FastAPI routes
-│   ├── core/               # config, logging, llm abstraction
-│   ├── db/                 # SQLAlchemy models & session
-│   ├── schemas/            # Pydantic DTOs
-│   ├── services/           # ingestion, retrieval, rag
-│   └── workers/            # background jobs (future)
-├── migrations/             # Alembic
-├── tests/                  # unit + integration + eval
-├── scripts/                # dev helpers
+├── src/docu_mind/ # application code
+│ ├── api/ # FastAPI routes
+│ ├── core/ # config, logging, LLM, embeddings
+│ ├── db/ # SQLAlchemy models & session
+│ ├── schemas/ # Pydantic DTOs
+│ ├── services/ # ingestion, chunking, retrieval, rag
+│ └── utils/
+├── migrations/ # Alembic
+├── tests/ # unit + integration + e2e + eval
+├── scripts/ # dev helpers
 ├── Dockerfile
 ├── docker-compose.yml
 └── justfile
@@ -86,28 +87,120 @@ docu-mind/
 
 ## 🚀 Quick start
 
+### Prerequisites
+
+- **Python 3.12** — managed automatically by `uv`
+- **Docker Desktop** — for PostgreSQL + pgvector
+- **uv** — install: `winget install astral-sh.uv`
+- **just** — install: `winget install Casey.Just`
+- **GEMINI_API_KEY** — free from https://aistudio.google.com/app/apikey
+
+### Setup
+
 ```bash
 # 1. Clone
 git clone https://github.com/amirgh-devtech/docu-mind.git
 cd docu-mind
 
-# 2. Setup env
+# 2. Setup env — copy and fill in GEMINI_API_KEY
 cp .env.example .env
-# edit .env with your API keys
 
-# 3. Start infra (Postgres + pgvector)
-just up-infra
+# Windows PowerShell:
+# Copy-Item .env.example .env
 
-# 4. Install deps
+# 3. Install dependencies
 just sync
 
-# 5. Run migrations
+# 4. Start Postgres + pgvector
+just up-pg
+
+# 5. Run migrations (creates tables + pgvector extension)
 just migrate
 
-# 6. Run API
+# 6. Run the API (with hot reload)
 just api
 ```
 
+Open Swagger UI at: http://localhost:8000/docs
+
+### Quick verification
+
+```bash
+# Liveness
+curl http://localhost:8000/api/v1/health
+
+# → {"status":"ok","version":"0.1.0"}
+
+# Readiness (checks DB + pgvector)
+curl http://localhost:8000/api/v1/ready
+
+# → {"status":"ready","version":"0.1.0","pgvector":"0.8.6"}
+
+# Runtime config snapshot
+curl http://localhost:8000/api/v1/config
+```
+
+### Everyday commands
+
+```bash
+just                          # list all recipes
+just up-pg                    # start Postgres
+just down-pg                  # stop Postgres
+just migrate                  # apply migrations
+just makemigration "add tags" # create a new migration
+just api                      # run API (hot reload)
+just lint                     # ruff + mypy
+just fmt                      # auto-fix lint + format
+just test                     # unit tests
+just test-all                 # all tests
+just psql                     # open psql shell
+just clean                    # clean caches
+```
+
+### Stopping everything
+
+```bash
+# Ctrl+C in the API terminal, then:
+just down-pg
+```
+
+## ⚙️ Configuration
+
+All settings are loaded from `.env`. See `.env.example` for the full list.
+
+Key variables:
+
+| Variable              | Default               | Description                      |
+| --------------------- | --------------------- | -------------------------------- |
+| `DOCU_MIND_MODE`      | `eco`                 | `eco` (free) or `pro` (accurate) |
+| `GEMINI_API_KEY`      | —                     | Required for LLM + embeddings    |
+| `OPENAI_API_KEY`      | —                     | Optional (Pro mode fallback)     |
+| `ANTHROPIC_API_KEY`   | —                     | Optional (Pro mode fallback)     |
+| `COHERE_API_KEY`      | —                     | Required only in Pro mode        |
+| `POSTGRES_*`          | localhost / docu_mind | Database connection              |
+| `CHUNK_SIZE`          | `800`                 | Target chunk size (tokens)       |
+| `CHUNK_OVERLAP`       | `150`                 | Chunk overlap (tokens)           |
+| `CONTEXTUAL_CHUNKING` | `true`                | Enable Contextual Retrieval      |
+| `RETRIEVAL_TOP_K`     | `20`                  | Candidates fetched per retriever |
+| `RERANK_TOP_K`        | `5`                   | Final results after reranking    |
+
+## 🗺️ Roadmap
+
+- [x] Project skeleton + CI
+- [x] Core (config, logging, LLM abstraction, embeddings)
+- [x] Database layer + Alembic + pgvector
+- [x] FastAPI app + routes + schemas
+- [ ] Ingestion pipeline (PDF/DOCX/MD → chunks → embeddings)
+- [ ] Retrieval (hybrid search + RRF + reranker)
+- [ ] RAG engine (prompt + citations + streaming)
+- [ ] Docker Compose for full stack
+- [ ] Tests (unit + integration + ragas evaluation)
+- [ ] Deployment guide
+
+## 🤝 Contributing
+
+This is a personal portfolio project — PRs are welcome but may not be merged. Feel free to fork.
+
 ## 📜 License
 
-MIT
+MIT — see [LICENSE](LICENSE).
