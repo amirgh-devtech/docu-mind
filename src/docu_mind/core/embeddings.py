@@ -99,10 +99,7 @@ class EmbeddingClient:
         extra: dict[str, object] = {}
 
         # Gemini Embedding uses `output_dimensionality`
-        if model.startswith("gemini/"):
-            extra["dimensions"] = self._settings.active_embedding_dim
-        # OpenAI v3 uses `dimensions`
-        elif model.startswith("text-embedding-3"):
+        if model.startswith("gemini/") or model.startswith("text-embedding-3"):
             extra["dimensions"] = self._settings.active_embedding_dim
 
         async for attempt in AsyncRetrying(
@@ -116,9 +113,9 @@ class EmbeddingClient:
                     response = await litellm.aembedding(
                         model=model,
                         input=batch,
-                        **extra,  # type: ignore[arg-type]
+                        **extra,
                     )
-                except Exception as e:  # noqa: BLE001
+                except Exception as e:
                     logger.warning("embedding.attempt_failed", error=str(e))
                     raise EmbeddingError(f"Embedding failed: {e}") from e
 

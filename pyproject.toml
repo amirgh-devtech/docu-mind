@@ -64,8 +64,8 @@ dependencies = [
     # "openai>=1.55,<2.0",
 
     # --- Reranker ---
-    "sentence-transformers>=3.3,<4.0", # local cross-encoder (Eco mode)
-    "cohere>=5.13,<6.0",               # Cohere Rerank (Pro mode)
+    "sentence-transformers>=6.1.0,<7.0", # local cross-encoder (Eco mode)
+    "cohere>=5.13,<6.0",                 # Cohere Rerank (Pro mode)
 
     # --- RAG evaluation (pinned to avoid langchain-community 0.4 breaking ragas) ---
     "langchain-community<0.4",
@@ -109,7 +109,7 @@ dev = [
     "pre-commit>=4.0,<5.0",
 
     # RAG Evaluation
-    "ragas>=0.2,<0.3",    # faithfulness, answer correctness, context precision
+    "ragas>=0.3.0,<0.4",  # faithfulness, answer correctness, context precision
     "datasets>=3.2,<4.0", # ragas dependency
 
     # Dev tooling
