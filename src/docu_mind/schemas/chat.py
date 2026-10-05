@@ -65,3 +65,7 @@ class StreamEvent(BaseModel):
     conversation_id: uuid.UUID | None = None
     message_id: uuid.UUID | None = None
     error: str | None = None
+    # Usage (only in `done` event)
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    latency_ms: int | None = None

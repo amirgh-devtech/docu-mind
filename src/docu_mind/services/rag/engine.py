@@ -185,6 +185,11 @@ class RAGEngine:
             # 5. Final citations
             final_citations = build_citations(answer, context)
 
+            # usage from last_usage
+            usage = self._llm.last_usage or {}
+            prompt_tokens = int(usage.get("prompt_tokens", 0))
+            completion_tokens = int(usage.get("completion_tokens", 0))
+
             # 6. Persist
             conversation, message = await self._persist(
                 db,
@@ -192,8 +197,8 @@ class RAGEngine:
                 answer=answer,
                 citations=final_citations,
                 conversation_id=conversation_id,
-                prompt_tokens=0,
-                completion_tokens=0,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
                 latency_ms=int((time.monotonic() - start) * 1000),
             )
 
@@ -202,6 +207,8 @@ class RAGEngine:
                 "conversation_id": str(conversation.id),
                 "message_id": str(message.id),
                 "latency_ms": int((time.monotonic() - start) * 1000),
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
             }
 
         except Exception as e:

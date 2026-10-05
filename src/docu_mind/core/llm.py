@@ -62,6 +62,7 @@ class LLMClient:
 
     def __init__(self, settings: Settings | None = None) -> None:
         self._settings = settings or get_settings()
+        self.last_usage: dict[str, int] | None = None
 
     # ─────────────────────────────────────────────
     # Token counting
@@ -233,16 +234,9 @@ class LLMClient:
     ) -> AsyncIterator[str]:
         """Stream tokens from the LLM.
 
-        Yields text deltas as they arrive. Falls back to next model if the
-        first one fails before any token is produced.
-
-        Args:
-            messages: OpenAI-style messages.
-            kind: "fast" or "smart".
-            temperature: Override.
-            max_tokens: Override.
-            model_override: Force model.
-            **extra: Forwarded to litellm.
+        After the stream completes, the final token usage is available
+        via the ``last_usage`` attribute (populated by the last chunk when
+        the provider returns it).
 
         Yields:
             Text chunks (str).
@@ -250,6 +244,9 @@ class LLMClient:
         models = [model_override] if model_override else self._models_for(kind)
         temp = self._settings.llm_temperature if temperature is None else temperature
         mtok = self._settings.llm_max_tokens if max_tokens is None else max_tokens
+
+        # Reset usage at start of each stream call
+        self.last_usage = None
 
         last_error: Exception | None = None
 
@@ -262,13 +259,26 @@ class LLMClient:
                     max_tokens=mtok,
                     timeout=self._settings.llm_request_timeout,
                     stream=True,
+                    stream_options={"include_usage": True},
                     **extra,
                 )
                 async for chunk in stream:
-                    delta = chunk.choices[0].delta.content
+                    # Final chunk has empty choices + usage
+                    usage = getattr(chunk, "usage", None)
+                    if usage is not None:
+                        self.last_usage = {
+                            "prompt_tokens": getattr(usage, "prompt_tokens", 0) or 0,
+                            "completion_tokens": getattr(usage, "completion_tokens", 0) or 0,
+                            "total_tokens": getattr(usage, "total_tokens", 0) or 0,
+                        }
+
+                    choices = getattr(chunk, "choices", None)
+                    if not choices:
+                        continue
+                    delta = getattr(choices[0].delta, "content", None)
                     if delta:
                         yield delta
-                return  # success — stop trying fallbacks
+                return
             except Exception as e:
                 last_error = e
                 logger.warning(
