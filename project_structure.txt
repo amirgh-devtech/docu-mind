@@ -1,25 +1,20 @@
 ﻿==================================================
 Project Structure: docu-mind
-Generated on: 2026-09-30 23:06:52
+Generated on: 2026-10-06 02:36:29
 ==================================================
 .
-├── .mypy_cache
-│   ├── 3.12
-│   │   └── cache.db
-│   ├── .gitignore
-│   ├── CACHEDIR.TAG
-│   └── missing_stubs
-├── .ruff_cache
-│   ├── 0.8.6
-│   │   ├── 14310842143256942353
-│   │   ├── 18009531243455325981
-│   │   └── 2751629190303121274
-│   ├── .gitignore
-│   └── CACHEDIR.TAG
 ├── migrations
 │   ├── versions
-│   │   └── .gitkeep
-│   └── README
+│   │   ├── 14ece462915a_initial_schema_documents_chunks_.py
+│   │   ├── 1ddcdb0fcf72_enable_pgvector_extension.py
+│   │   └── 7e2efb69e3fd_recompute_content_tsv_with_configurable_.py
+│   ├── env.py
+│   ├── README
+│   └── script.py.mako
+├── samples
+│   ├── test.docx
+│   ├── test.md
+│   └── test.pdf
 ├── scripts
 │   ├── __init__.py
 │   ├── evaluate.py
@@ -91,7 +86,8 @@ Generated on: 2026-09-30 23:06:52
 │       │   │   ├── __init__.py
 │       │   │   ├── base.py
 │       │   │   ├── cohere.py
-│       │   │   └── local.py
+│       │   │   ├── local.py
+│       │   │   └── service.py
 │       │   ├── retrieval
 │       │   │   ├── __init__.py
 │       │   │   ├── base.py
@@ -118,6 +114,13 @@ Generated on: 2026-09-30 23:06:52
 │   ├── integration
 │   │   ├── .gitkeep
 │   │   └── __init__.py
+│   ├── manual
+│   │   ├── chat_01.json
+│   │   ├── chat_02.json
+│   │   ├── search_01_simple.json
+│   │   ├── search_02_semantic.json
+│   │   ├── search_03_rerank.json
+│   │   └── search_04_parent.json
 │   ├── unit
 │   │   ├── .gitkeep
 │   │   └── __init__.py
@@ -129,6 +132,8 @@ Generated on: 2026-09-30 23:06:52
 ├── .gitattributes
 ├── .gitignore
 ├── .python-version
+├── alembic.ini
+├── justfile
 ├── LICENSE
 ├── pyproject.toml
 ├── README.md

@@ -2,7 +2,7 @@
 
 $OutputFile = "project_structure.txt"
 
-$ExcludeDirs  = @('.git', '.venv', 'venv', '__pycache__', '.idea', '.vscode', 'node_modules', '.pytest_cache', 'dist', 'build')
+$ExcludeDirs  = @('.git', '.venv', 'venv', '__pycache__', '.idea', '.vscode', 'node_modules', '.pytest_cache', 'dist', 'build', 'env', 'tmp', 'temp', '.eggs', '.mypy_cache', '.tox', '.nox', '.coverage', '.cache', 'logs', 'uploads', 'docs', '.ruff_cache', '.pytest_cache', '.mypy_cache', '.ipynb_checkpoints', 'htmlcov', 'coverage_html_report', 'coverage_html_report_files', 'coverage_html_report_files_*')
 $ExcludeFiles = @('*.pyc', '*.pyo', '.DS_Store', 'project_structure.txt', 'generate_tree.ps1')
 
 function Get-DirectoryTree {
