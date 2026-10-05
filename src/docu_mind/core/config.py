@@ -161,6 +161,11 @@ class Settings(BaseSettings):
     max_upload_size_mb: int = Field(default=50, ge=1, le=500)
 
     # ─────────────────────────────────────────────
+    # HuggingFace
+    # ─────────────────────────────────────────────
+    hf_token: str | None = None
+
+    # ─────────────────────────────────────────────
     # Security
     # ─────────────────────────────────────────────
     secret_key: str = "change_me_to_a_long_random_string"  # noqa: S105 — dev default, must be overridden

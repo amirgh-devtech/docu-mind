@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+import asyncio
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,20 +21,39 @@ logger = get_logger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application startup / shutdown hooks."""
     settings = get_settings()
     configure_logging()
+
+    # Propagate HF_TOKEN to HuggingFace Hub BEFORE any HF library is imported.
+    if settings.hf_token:
+        os.environ.setdefault("HF_TOKEN", settings.hf_token)
+        os.environ.setdefault("HUGGING_FACE_HUB_TOKEN", settings.hf_token)
+
     logger.info(
         "app.startup",
         version=__version__,
         env=settings.app_env,
         mode=settings.docu_mind_mode,
+        hf_token_set=bool(settings.hf_token),
     )
 
-    # Lazily build clients and stash them on app.state
+    # Build shared clients
     app.state.llm_client = LLMClient(settings)
     app.state.embedding_client = EmbeddingClient(settings)
+
+    # Pre-load the local reranker (moves the slow model load
+    # out of the first user request path). Uses a module-level
+    # cache so subsequent requests share the loaded model.
+    if settings.active_reranker_provider == "local":
+        from docu_mind.services.reranking.local import LocalReranker
+
+        logger.info("app.preloading_reranker")
+        reranker = LocalReranker(settings)
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, reranker.preload)
+        logger.info("app.reranker_ready")
 
     try:
         yield
