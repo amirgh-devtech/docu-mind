@@ -1,0 +1,5 @@
+{
+  "query": "spam detection",
+  "top_k": 3,
+  "rerank": false
+}

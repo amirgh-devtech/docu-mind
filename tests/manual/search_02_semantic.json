@@ -1,0 +1,6 @@
+{
+  "query": "algorithms that learn from labeled data",
+  "top_k": 5,
+  "rerank": true,
+  "rerank_top_k": 3
+}

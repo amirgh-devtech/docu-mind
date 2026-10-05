@@ -1,5 +1,291 @@
-"""RAG orchestrator (retrieve → rerank → build context → stream)."""
+"""RAG orchestrator: retrieval → context → LLM → citations."""
 
 from __future__ import annotations
 
-# Implementation in a later step.
+import time
+import uuid
+from collections.abc import AsyncIterator
+from dataclasses import dataclass
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from docu_mind.core.config import Settings, get_settings
+from docu_mind.core.embeddings import EmbeddingClient
+from docu_mind.core.llm import LLMClient
+from docu_mind.core.logging import get_logger
+from docu_mind.db.models.conversation import Conversation
+from docu_mind.db.models.message import Message
+from docu_mind.schemas.chat import Citation
+from docu_mind.services.rag.citations import build_citations
+from docu_mind.services.rag.context import ContextBuilder
+from docu_mind.services.rag.prompts import SYSTEM_PROMPT, build_rag_prompt
+from docu_mind.services.retrieval.base import RetrievedChunk
+from docu_mind.services.retrieval.service import RetrievalService
+
+logger = get_logger(__name__)
+
+
+@dataclass(slots=True)
+class RAGResult:
+    """Non-streaming RAG result."""
+
+    answer: str
+    citations: list[Citation]
+    retrieved: list[RetrievedChunk]
+    conversation_id: uuid.UUID
+    message_id: uuid.UUID
+    model: str
+    prompt_tokens: int
+    completion_tokens: int
+    latency_ms: int
+
+
+class RAGEngine:
+    """End-to-end RAG orchestrator."""
+
+    def __init__(
+        self,
+        embedder: EmbeddingClient,
+        settings: Settings | None = None,
+        llm: LLMClient | None = None,
+    ) -> None:
+        self._settings = settings or get_settings()
+        self._llm = llm or LLMClient(self._settings)
+        self._embedder = embedder
+        self._retrieval = RetrievalService(embedder, self._settings)
+        self._context = ContextBuilder(self._settings, self._llm)
+
+    # ─────────────────────────────────────────────
+    # Non-streaming
+    # ─────────────────────────────────────────────
+    async def answer(
+        self,
+        db: AsyncSession,
+        query: str,
+        *,
+        conversation_id: uuid.UUID | None = None,
+        top_k: int | None = None,
+        rerank_top_k: int | None = None,
+        temperature: float | None = None,
+    ) -> RAGResult:
+        """Run a RAG query end-to-end (non-streaming)."""
+        start = time.monotonic()
+
+        # 1. Retrieve
+        chunks = await self._retrieval.search(
+            db,
+            query,
+            top_k=top_k,
+            rerank_top_k=rerank_top_k,
+        )
+
+        # 2. Build context
+        context = self._context.build(chunks)
+
+        # 3. LLM call
+        prompt = build_rag_prompt(query, [b.text for b in context.blocks])
+        response = await self._llm.complete(
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+            kind="smart",
+            temperature=temperature,
+        )
+
+        # 4. Citations
+        citations = build_citations(response.content, context)
+
+        # 5. Persist
+        conversation, message = await self._persist(
+            db,
+            query=query,
+            answer=response.content,
+            citations=citations,
+            conversation_id=conversation_id,
+            prompt_tokens=response.prompt_tokens,
+            completion_tokens=response.completion_tokens,
+            latency_ms=int((time.monotonic() - start) * 1000),
+        )
+
+        latency_ms = int((time.monotonic() - start) * 1000)
+
+        return RAGResult(
+            answer=response.content,
+            citations=citations,
+            retrieved=chunks,
+            conversation_id=conversation.id,
+            message_id=message.id,
+            model=response.model,
+            prompt_tokens=response.prompt_tokens,
+            completion_tokens=response.completion_tokens,
+            latency_ms=latency_ms,
+        )
+
+    # ─────────────────────────────────────────────
+    # Streaming
+    # ─────────────────────────────────────────────
+    async def stream(
+        self,
+        db: AsyncSession,
+        query: str,
+        *,
+        conversation_id: uuid.UUID | None = None,
+        top_k: int | None = None,
+        rerank_top_k: int | None = None,
+        temperature: float | None = None,
+    ) -> AsyncIterator[dict]:
+        """Stream a RAG answer as events.
+
+        Yields dicts that the API layer will serialize to SSE:
+        - {"type": "citations", "citations": [...]}
+        - {"type": "token", "content": "..."}
+        - {"type": "done", "conversation_id": ..., "message_id": ..., ...}
+        - {"type": "error", "error": "..."}
+        """
+        start = time.monotonic()
+
+        try:
+            # 1. Retrieve
+            chunks = await self._retrieval.search(
+                db,
+                query,
+                top_k=top_k,
+                rerank_top_k=rerank_top_k,
+            )
+
+            # 2. Build context
+            context = self._context.build(chunks)
+
+            # 3. Emit citations first (client can show them while streaming)
+            citations = [
+                _chunk_to_citation_dict(c) for c in context.chunk_map.values()
+            ]
+            yield {"type": "citations", "citations": citations}
+
+            # 4. Stream LLM tokens
+            prompt = build_rag_prompt(query, [b.text for b in context.blocks])
+            messages = [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ]
+
+            answer_parts: list[str] = []
+            async for delta in self._llm.stream(
+                messages,
+                kind="smart",
+                temperature=temperature,
+            ):
+                answer_parts.append(delta)
+                yield {"type": "token", "content": delta}
+
+            answer = "".join(answer_parts)
+
+            # 5. Extract citations from final answer
+            final_citations = build_citations(answer, context)
+
+            # 6. Persist
+            conversation, message = await self._persist(
+                db,
+                query=query,
+                answer=answer,
+                citations=final_citations,
+                conversation_id=conversation_id,
+                prompt_tokens=0,  # not available in stream mode
+                completion_tokens=0,
+                latency_ms=int((time.monotonic() - start) * 1000),
+            )
+
+            yield {
+                "type": "done",
+                "conversation_id": str(conversation.id),
+                "message_id": str(message.id),
+                "latency_ms": int((time.monotonic() - start) * 1000),
+            }
+
+        except Exception as e:
+            logger.exception("rag.stream_failed")
+            yield {"type": "error", "error": str(e)}
+
+    # ─────────────────────────────────────────────
+    # Persistence
+    # ─────────────────────────────────────────────
+    async def _persist(
+        self,
+        db: AsyncSession,
+        *,
+        query: str,
+        answer: str,
+        citations: list[Citation],
+        conversation_id: uuid.UUID | None,
+        prompt_tokens: int,
+        completion_tokens: int,
+        latency_ms: int,
+    ) -> tuple[Conversation, Message]:
+        """Save the conversation + messages to the DB."""
+        # Get or create conversation
+        if conversation_id is None:
+            conversation = Conversation(
+                id=uuid.uuid4(),
+                title=query[:100],
+                mode=self._settings.docu_mind_mode,
+                llm_model=self._settings.active_llm_smart,
+            )
+            db.add(conversation)
+            await db.flush()
+        else:
+            conversation = await db.get(Conversation, conversation_id)
+            if conversation is None:
+                conversation = Conversation(
+                    id=uuid.uuid4(),
+                    title=query[:100],
+                    mode=self._settings.docu_mind_mode,
+                    llm_model=self._settings.active_llm_smart,
+                )
+                db.add(conversation)
+                await db.flush()
+
+        # User message
+        user_msg = Message(
+            id=uuid.uuid4(),
+            conversation_id=conversation.id,
+            role="user",
+            content=query,
+            citations=[],
+        )
+        db.add(user_msg)
+
+        # Assistant message
+        citations_json = [c.model_dump(mode="json") for c in citations]
+        assistant_msg = Message(
+            id=uuid.uuid4(),
+            conversation_id=conversation.id,
+            role="assistant",
+            content=answer,
+            citations=citations_json,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            latency_ms=latency_ms,
+        )
+        db.add(assistant_msg)
+
+        await db.commit()
+        await db.refresh(conversation)
+        await db.refresh(assistant_msg)
+
+        return conversation, assistant_msg
+
+
+def _chunk_to_citation_dict(chunk: RetrievedChunk) -> dict:
+    """Convert RetrievedChunk to a citation dict (for streaming event)."""
+    snippet = chunk.content[:200]
+    if len(chunk.content) > 200:
+        snippet += "..."
+    return {
+        "chunk_id": str(chunk.chunk_id),
+        "document_id": str(chunk.document_id),
+        "document_filename": chunk.document_filename,
+        "page_number": chunk.page_number,
+        "snippet": snippet,
+        "score": chunk.score,
+    }

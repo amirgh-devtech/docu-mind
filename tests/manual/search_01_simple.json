@@ -1,0 +1,5 @@
+{
+  "query": "machine learning",
+  "top_k": 5,
+  "rerank": false
+}
