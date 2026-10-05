@@ -190,7 +190,7 @@ Key variables:
 - [x] Core (config, logging, LLM abstraction, embeddings)
 - [x] Database layer + Alembic + pgvector
 - [x] FastAPI app + routes + schemas
-- [ ] Ingestion pipeline (PDF/DOCX/MD → chunks → embeddings)
+- [x] Ingestion pipeline (PDF/DOCX/MD → chunks → embeddings)
 - [ ] Retrieval (hybrid search + RRF + reranker)
 - [ ] RAG engine (prompt + citations + streaming)
 - [ ] Docker Compose for full stack
