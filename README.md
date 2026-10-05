@@ -191,8 +191,8 @@ Key variables:
 - [x] Database layer + Alembic + pgvector
 - [x] FastAPI app + routes + schemas
 - [x] Ingestion pipeline (PDF/DOCX/MD → chunks → embeddings)
-- [ ] Retrieval (hybrid search + RRF + reranker)
-- [ ] RAG engine (prompt + citations + streaming)
+- [x] Retrieval (hybrid search + RRF + reranker)
+- [x] RAG engine (prompt + citations + streaming)
 - [ ] Docker Compose for full stack
 - [ ] Tests (unit + integration + ragas evaluation)
 - [ ] Deployment guide

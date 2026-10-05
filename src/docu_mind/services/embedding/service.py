@@ -5,6 +5,7 @@ from __future__ import annotations
 from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from docu_mind.core.config import Settings, get_settings
 from docu_mind.core.embeddings import EmbeddingClient, EmbeddingResult
 from docu_mind.core.logging import get_logger
 from docu_mind.db.models.chunk import Chunk as ChunkModel
@@ -15,8 +16,13 @@ logger = get_logger(__name__)
 class EmbeddingService:
     """High-level embedding operations tied to the DB."""
 
-    def __init__(self, client: EmbeddingClient) -> None:
+    def __init__(
+        self,
+        client: EmbeddingClient,
+        settings: Settings | None = None,
+    ) -> None:
         self._client = client
+        self._settings = settings or get_settings()
 
     async def embed_document_chunks(
         self,
@@ -27,15 +33,7 @@ class EmbeddingService:
 
         Only *child* chunks (with a `parent_id`) get embedded.
         Parent chunks are skipped.
-
-        Args:
-            db: Active DB session.
-            chunks: Chunk ORM models to embed.
-
-        Returns:
-            EmbeddingResult with the embeddings.
         """
-        # Filter to children only
         children = [c for c in chunks if c.parent_id is not None]
         if not children:
             logger.info("embedding.no_children")
@@ -43,7 +41,6 @@ class EmbeddingService:
                 vectors=[], model=self._client.model, dimensions=self._client.dimensions
             )
 
-        # Build the text we actually embed: context_prefix + content
         texts = [
             f"{c.context_prefix}\n\n{c.content}" if c.context_prefix else c.content
             for c in children
@@ -57,10 +54,10 @@ class EmbeddingService:
             total_tokens=result.total_tokens,
         )
 
-        # Write vectors + tsvector back
+        ts_config = self._settings.keyword_ts_config
         for chunk, vec in zip(children, result.vectors, strict=True):
             chunk.embedding = vec
-            chunk.content_tsv = func.to_tsvector("simple", chunk.content)
+            chunk.content_tsv = func.to_tsvector(ts_config, chunk.content)
 
         await db.flush()
         return result

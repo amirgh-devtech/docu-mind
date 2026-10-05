@@ -133,6 +133,23 @@ class Settings(BaseSettings):
     rrf_k: int = Field(default=60, ge=1, le=200)
 
     # ─────────────────────────────────────────────
+    # Retrieval — keyword search
+    # ─────────────────────────────────────────────
+    #: PostgreSQL text search config. Options:
+    #:   - "simple": no stemming, no stopwords, language-agnostic (default)
+    #:   - "english": English stemming + stopwords
+    #:   - "french", "german", ...: language-specific
+    #: Use "simple" for multi-lingual documents; "english" (etc.) for
+    #: single-language corpora where stemming helps recall.
+    keyword_ts_config: str = "english"
+
+    #: Query mode. Options:
+    #:   - "websearch": Google-like OR semantics + phrase support (default)
+    #:   - "plain": strict AND semantics (original behavior)
+    #:   - "phrase": phrase search
+    keyword_query_mode: Literal["websearch", "plain", "phrase"] = "websearch"
+
+    # ─────────────────────────────────────────────
     # RAG
     # ─────────────────────────────────────────────
     rag_context_token_budget: int = Field(default=6000, ge=500, le=100000)

@@ -31,7 +31,7 @@ class RetrievalService:
 
         # Build retrievers
         self._dense = DenseRetriever(embedder)
-        self._keyword = KeywordRetriever()
+        self._keyword = KeywordRetriever(self._settings)
         self._hybrid = HybridRetriever(
             self._dense,
             self._keyword,

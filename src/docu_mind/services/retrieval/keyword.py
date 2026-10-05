@@ -1,10 +1,22 @@
-"""Keyword retriever — PostgreSQL tsvector with ts_rank_cd."""
+"""Keyword retriever — PostgreSQL tsvector with ts_rank_cd.
+
+Uses ``websearch_to_tsquery`` by default, which gives Google-like
+semantics:
+    - bare words are OR'd (not AND'd)
+    - "quoted phrases" are treated as phrase search
+    - -excluded are dropped
+    - or / and can be used explicitly
+
+The ts_config is configurable (``simple`` for multi-lingual,
+``english`` for English with stemming).
+"""
 
 from __future__ import annotations
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from docu_mind.core.config import Settings, get_settings
 from docu_mind.core.logging import get_logger
 from docu_mind.db.models.chunk import Chunk
 from docu_mind.db.models.document import Document
@@ -14,13 +26,24 @@ logger = get_logger(__name__)
 
 
 class KeywordRetriever(BaseRetriever):
-    """Full-text search using PostgreSQL's tsvector + ts_rank_cd.
-
-    Uses ``plainto_tsquery`` for the query, and ``simple`` config
-    (no stemming) which works better for multi-lingual documents.
-    """
+    """Full-text search using PostgreSQL's tsvector + ts_rank_cd."""
 
     name = "keyword"
+
+    def __init__(self, settings: Settings | None = None) -> None:
+        self._settings = settings or get_settings()
+
+    def _build_tsquery(self, query: str):  # type: ignore[no-untyped-def]
+        """Build a tsquery based on the configured mode."""
+        mode = self._settings.keyword_query_mode
+        cfg = self._settings.keyword_ts_config
+
+        if mode == "websearch":
+            return func.websearch_to_tsquery(cfg, query)
+        if mode == "phrase":
+            return func.phraseto_tsquery(cfg, query)
+        # default: plain (strict AND)
+        return func.plainto_tsquery(cfg, query)
 
     async def retrieve(
         self,
@@ -30,7 +53,10 @@ class KeywordRetriever(BaseRetriever):
         top_k: int = 20,
     ) -> list[RetrievedChunk]:
         """Run keyword search on ``content_tsv``."""
-        ts_query = func.plainto_tsquery("simple", query)
+        # Build the tsquery
+        ts_query = self._build_tsquery(query)
+
+        # Ranking: cover density (favors proximity + higher term count)
         rank = func.ts_rank_cd(Chunk.content_tsv, ts_query).label("rank")
 
         stmt = (
@@ -62,5 +88,11 @@ class KeywordRetriever(BaseRetriever):
                 )
             )
 
-        logger.info("retrieval.keyword", query_len=len(query), results=len(chunks))
+        logger.info(
+            "retrieval.keyword",
+            query_len=len(query),
+            mode=self._settings.keyword_query_mode,
+            ts_config=self._settings.keyword_ts_config,
+            results=len(chunks),
+        )
         return chunks
