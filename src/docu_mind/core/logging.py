@@ -47,7 +47,6 @@ def configure_logging() -> None:
         structlog.processors.TimeStamper(fmt="iso", utc=True),
         _add_app_context,
         structlog.processors.StackInfoRenderer(),
-        structlog.processors.format_exc_info,
         _drop_color_message_key,
     ]
 

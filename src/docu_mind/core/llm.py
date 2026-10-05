@@ -4,7 +4,7 @@ Centralises:
 - Model routing (fast vs smart, eco vs pro)
 - Fallback chain
 - Retry with backoff
-- Token counting
+- Token counting (heuristic, provider-agnostic)
 - Streaming
 """
 
@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 import os
 from typing import Any, Literal
 
+# Must be set BEFORE importing litellm so it skips the remote cost map fetch.
 os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
 
 import litellm
@@ -24,7 +25,6 @@ from tenacity import (
     stop_after_attempt,
     wait_exponential,
 )
-import tiktoken
 
 from docu_mind.core.config import Settings, get_settings
 from docu_mind.core.exceptions import LLMProviderError, LLMTimeoutError
@@ -37,6 +37,11 @@ TaskKind = Literal["fast", "smart"]
 # Quiet litellm's own logging — we handle it via structlog
 litellm.suppress_debug_info = True
 litellm.drop_params = True  # silently drop unsupported params per provider
+
+
+# Heuristic constants for token estimation
+_CHARS_PER_TOKEN_EN = 4  # ~4 chars per token for English/Latin scripts
+_CJK_TOKEN_RATIO = 1  # ~1 char per token for CJK
 
 
 @dataclass(slots=True)
@@ -57,21 +62,47 @@ class LLMClient:
 
     def __init__(self, settings: Settings | None = None) -> None:
         self._settings = settings or get_settings()
-        self._tokenizer: tiktoken.Encoding | None = None
 
     # ─────────────────────────────────────────────
     # Token counting
     # ─────────────────────────────────────────────
-    @property
-    def tokenizer(self) -> tiktoken.Encoding:
-        """Lazy-load tiktoken encoder (o200k_base for modern models)."""
-        if self._tokenizer is None:
-            self._tokenizer = tiktoken.get_encoding("o200k_base")
-        return self._tokenizer
-
     def count_tokens(self, text: str) -> int:
-        """Count tokens in a text string."""
-        return len(self.tokenizer.encode(text))
+        """Estimate token count for a text string.
+
+        We use a simple heuristic rather than a real tokenizer because:
+
+        1. We use Gemini (and fallback providers), not OpenAI. Each provider
+           has its own tokenizer, so pinning to `tiktoken`'s `o200k_base`
+           would give misleading numbers anyway.
+        2. `tiktoken` downloads its BPE files from OpenAI's CDN at runtime,
+           which is unreachable from some regions (including Iran).
+
+        The heuristic is:
+        - CJK characters ≈ 1 token each
+        - Everything else  ≈ 4 characters per token
+
+        This is accurate enough for chunk sizing, which is the only
+        place we use it. For exact counts (e.g. billing), call the
+        provider's token counting API directly.
+
+        Args:
+            text: Input text.
+
+        Returns:
+            Estimated token count (>= 0).
+        """
+        if not text:
+            return 0
+
+        cjk = sum(
+            1
+            for c in text
+            if "\u4e00" <= c <= "\u9fff"  # CJK Unified Ideographs
+            or "\u3040" <= c <= "\u30ff"  # Hiragana + Katakana
+            or "\uac00" <= c <= "\ud7af"  # Hangul syllables
+        )
+        non_cjk = len(text) - cjk
+        return cjk + max(1, non_cjk // _CHARS_PER_TOKEN_EN)
 
     # ─────────────────────────────────────────────
     # Model selection
@@ -80,6 +111,12 @@ class LLMClient:
         """Return ordered list of models to try: primary + fallbacks.
 
         The fallback chain from settings is always appended (deduped).
+
+        Args:
+            kind: "fast" (chunking helpers) or "smart" (final answers).
+
+        Returns:
+            List of model identifiers in priority order.
         """
         primary = (
             self._settings.active_llm_fast if kind == "fast" else self._settings.active_llm_smart

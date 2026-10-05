@@ -75,7 +75,7 @@ class Settings(BaseSettings):
     ]
 
     # LLM runtime
-    llm_request_timeout: int = Field(default=60, ge=5, le=600)
+    llm_request_timeout: int = Field(default=180, ge=5, le=600)
     llm_max_retries: int = Field(default=3, ge=0, le=10)
     llm_temperature: float = Field(default=0.0, ge=0.0, le=2.0)
     llm_max_tokens: int = Field(default=2048, ge=1, le=32000)
@@ -84,10 +84,18 @@ class Settings(BaseSettings):
     # Embedding
     # ─────────────────────────────────────────────
     embedding_provider: Literal["openai", "gemini"] = "gemini"
-    embedding_model_eco: str = "gemini-embedding-001"
+
+    # Eco mode
+    embedding_model_eco_gemini: str = "gemini-embedding-001"
+    embedding_model_eco_openai: str = "text-embedding-3-small"
     embedding_dim_eco: int = 1536
-    embedding_model_pro: str = "text-embedding-3-large"
-    embedding_dim_pro: int = Field(default=1024, ge=1)  # truncated large
+
+    # Pro mode
+    embedding_model_pro_gemini: str = "gemini-embedding-001"
+    embedding_model_pro_openai: str = "text-embedding-3-large"
+    embedding_dim_pro: int = 1536
+
+    # Common
     embedding_batch_size: int = Field(default=100, ge=1, le=2048)
 
     # ─────────────────────────────────────────────
@@ -214,8 +222,16 @@ class Settings(BaseSettings):
 
     @property
     def active_embedding_model(self) -> str:
+        if self.embedding_provider == "gemini":
+            return (
+                self.embedding_model_eco_gemini
+                if self.docu_mind_mode == "eco"
+                else self.embedding_model_pro_gemini
+            )
         return (
-            self.embedding_model_eco if self.docu_mind_mode == "eco" else self.embedding_model_pro
+            self.embedding_model_eco_openai
+            if self.docu_mind_mode == "eco"
+            else self.embedding_model_pro_openai
         )
 
     @property
