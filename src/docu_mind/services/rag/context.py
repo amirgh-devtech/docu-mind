@@ -20,9 +20,9 @@ logger = get_logger(__name__)
 class ContextBlock:
     """A single numbered context block."""
 
-    index: int          # 1-based citation index
+    index: int  # 1-based citation index
     chunk: RetrievedChunk
-    text: str           # Formatted block: "[1] (source: X)\\n...text..."
+    text: str  # Formatted block: "[1] (source: X)\\n...text..."
     tokens: int
 
 
@@ -101,9 +101,7 @@ class ContextBuilder:
                 )
                 break
 
-            blocks.append(
-                ContextBlock(index=i, chunk=chunk, text=text, tokens=tokens)
-            )
+            blocks.append(ContextBlock(index=i, chunk=chunk, text=text, tokens=tokens))
             total += tokens
 
         logger.info(

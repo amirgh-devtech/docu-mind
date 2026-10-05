@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import time
-import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+import time
+import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -134,7 +134,7 @@ class RAGEngine:
         top_k: int | None = None,
         rerank_top_k: int | None = None,
         temperature: float | None = None,
-    ) -> AsyncIterator[dict]:
+    ) -> AsyncIterator[dict[str, object]]:
         """Stream a RAG answer as events.
 
         Yields dicts that the API layer will serialize to SSE:
@@ -158,9 +158,7 @@ class RAGEngine:
             context = self._context.build(chunks)
 
             # 3. Emit citations first (client can show them while streaming)
-            citations = [
-                _chunk_to_citation_dict(c) for c in context.chunk_map.values()
-            ]
+            citations = [_chunk_to_citation_dict(c) for c in context.chunk_map.values()]
             yield {"type": "citations", "citations": citations}
 
             # 4. Stream LLM tokens
@@ -224,7 +222,11 @@ class RAGEngine:
     ) -> tuple[Conversation, Message]:
         """Save the conversation + messages to the DB."""
         # Get or create conversation
-        if conversation_id is None:
+        conversation: Conversation | None = None
+        if conversation_id is not None:
+            conversation = await db.get(Conversation, conversation_id)
+
+        if conversation is None:
             conversation = Conversation(
                 id=uuid.uuid4(),
                 title=query[:100],
@@ -233,17 +235,6 @@ class RAGEngine:
             )
             db.add(conversation)
             await db.flush()
-        else:
-            conversation = await db.get(Conversation, conversation_id)
-            if conversation is None:
-                conversation = Conversation(
-                    id=uuid.uuid4(),
-                    title=query[:100],
-                    mode=self._settings.docu_mind_mode,
-                    llm_model=self._settings.active_llm_smart,
-                )
-                db.add(conversation)
-                await db.flush()
 
         # User message
         user_msg = Message(
@@ -276,7 +267,7 @@ class RAGEngine:
         return conversation, assistant_msg
 
 
-def _chunk_to_citation_dict(chunk: RetrievedChunk) -> dict:
+def _chunk_to_citation_dict(chunk: RetrievedChunk) -> dict[str, object]:
     """Convert RetrievedChunk to a citation dict (for streaming event)."""
     snippet = chunk.content[:200]
     if len(chunk.content) > 200:

@@ -1,0 +1,6 @@
+{
+  "query": "Can you give me an example of a supervised learning task?",
+  "conversation_id": "e96b344c-c229-49a0-a254-4e82115826b2",
+  "top_k": 10,
+  "rerank_top_k": 5
+}

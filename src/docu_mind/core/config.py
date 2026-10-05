@@ -133,6 +133,11 @@ class Settings(BaseSettings):
     rrf_k: int = Field(default=60, ge=1, le=200)
 
     # ─────────────────────────────────────────────
+    # RAG
+    # ─────────────────────────────────────────────
+    rag_context_token_budget: int = Field(default=6000, ge=500, le=100000)
+
+    # ─────────────────────────────────────────────
     # Uploads
     # ─────────────────────────────────────────────
     upload_dir: Path = Path("./uploads")

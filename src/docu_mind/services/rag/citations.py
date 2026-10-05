@@ -31,8 +31,8 @@ def extract_cited_indices(answer: str) -> set[int]:
     indices: set[int] = set()
     for match in _CITATION_PATTERN.finditer(answer):
         # match.group(1) can be "1" or "1, 3" or "1,3,5"
-        for part in match.group(1).split(","):
-            part = part.strip()
+        for raw_part in match.group(1).split(","):
+            part = raw_part.strip()
             if part.isdigit():
                 indices.add(int(part))
     return indices

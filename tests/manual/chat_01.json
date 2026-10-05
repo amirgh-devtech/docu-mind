@@ -1,0 +1,5 @@
+{
+  "query": "What is supervised learning?",
+  "top_k": 10,
+  "rerank_top_k": 5
+}
