@@ -32,8 +32,8 @@ class HybridRetriever(BaseRetriever):
         keyword: KeywordRetriever,
         *,
         rrf_k: int = 60,
-        dense_weight: float = 1.0,
-        keyword_weight: float = 1.0,
+        dense_weight: float = 0.7,
+        keyword_weight: float = 0.3,
     ) -> None:
         self._dense = dense
         self._keyword = keyword

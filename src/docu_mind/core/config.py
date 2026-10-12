@@ -132,6 +132,12 @@ class Settings(BaseSettings):
     hybrid_alpha: float = Field(default=0.5, ge=0.0, le=1.0)
     rrf_k: int = Field(default=60, ge=1, le=200)
 
+    #: RRF weights for hybrid retrieval.
+    #: Dense (semantic) is typically more reliable than keyword,
+    #: so it gets a higher weight by default.
+    rrf_dense_weight: float = Field(default=0.7, ge=0.0, le=2.0)
+    rrf_keyword_weight: float = Field(default=0.3, ge=0.0, le=2.0)
+
     # ─────────────────────────────────────────────
     # Retrieval — keyword search
     # ─────────────────────────────────────────────
