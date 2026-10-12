@@ -7,6 +7,9 @@ resolution-markers = [
     "sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 
+[manifest]
+overrides = [{ name = "requests-toolbelt", specifier = ">=1.0.0" }]
+
 [[package]]
 name = "aiohappyeyeballs"
 version = "2.7.1"
@@ -590,7 +593,7 @@ wheels = [
 
 [[package]]
 name = "docu-mind"
-version = "0.4.1"
+version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
