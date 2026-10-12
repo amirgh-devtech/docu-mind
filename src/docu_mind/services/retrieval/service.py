@@ -38,6 +38,8 @@ class RetrievalService:
             rrf_k=self._settings.rrf_k,
             dense_weight=self._settings.rrf_dense_weight,
             keyword_weight=self._settings.rrf_keyword_weight,
+            candidate_multiplier=self._settings.retrieval_candidate_multiplier,
+            candidate_min=self._settings.retrieval_candidate_min,
         )
 
         # Build reranker

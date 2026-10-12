@@ -152,6 +152,14 @@ class Settings(BaseSettings):
     rrf_dense_weight: float = Field(default=0.7, ge=0.0, le=2.0)
     rrf_keyword_weight: float = Field(default=0.3, ge=0.0, le=2.0)
 
+    #: Multiplier for candidate pool in hybrid search.
+    #: Dense + keyword each return ``top_k * multiplier`` candidates,
+    #: which are then fused via RRF. Higher = more recall but slower.
+    retrieval_candidate_multiplier: int = Field(default=2, ge=1, le=10)
+
+    #: Minimum candidate pool size (ignores multiplier if top_k * mult < this).
+    retrieval_candidate_min: int = Field(default=30, ge=1, le=200)
+
     # ─────────────────────────────────────────────
     # Retrieval — keyword search
     # ─────────────────────────────────────────────

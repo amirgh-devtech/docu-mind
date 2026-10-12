@@ -34,12 +34,20 @@ class HybridRetriever(BaseRetriever):
         rrf_k: int = 60,
         dense_weight: float = 0.7,
         keyword_weight: float = 0.3,
+        candidate_multiplier: int = 2,
+        candidate_min: int = 30,
     ) -> None:
         self._dense = dense
         self._keyword = keyword
         self._rrf_k = rrf_k
         self._dense_weight = dense_weight
         self._keyword_weight = keyword_weight
+        self._candidate_multiplier = candidate_multiplier
+        self._candidate_min = candidate_min
+
+    def _compute_candidate_k(self, top_k: int) -> int:
+        """Compute the candidate pool size."""
+        return max(top_k * self._candidate_multiplier, self._candidate_min)
 
     async def retrieve(
         self,
@@ -50,7 +58,7 @@ class HybridRetriever(BaseRetriever):
     ) -> list[RetrievedChunk]:
         """Run dense + keyword in parallel-ish, then fuse via RRF."""
         # Run both retrievers with a larger candidate pool
-        candidate_k = max(top_k * 2, 30)
+        candidate_k = self._compute_candidate_k(top_k)
 
         dense_results = await self._dense.retrieve(db, query, top_k=candidate_k)
         keyword_results = await self._keyword.retrieve(db, query, top_k=candidate_k)
