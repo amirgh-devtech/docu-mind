@@ -58,6 +58,11 @@ class EmbeddingClient:
         # Lazy-loaded provider clients
         self._gemini_client: object | None = None
 
+        # Query embedding cache (Redis or in-memory)
+        from docu_mind.core.cache import build_cache
+
+        self._cache = build_cache(self._settings)
+
     @property
     def model(self) -> str:
         return self._settings.active_embedding_model
@@ -102,13 +107,39 @@ class EmbeddingClient:
         )
 
     async def embed_query(self, text: str) -> list[float]:
-        """Embed a single query string."""
+        """Embed a single query string (with caching).
+
+        Cache key is the SHA-256 of the normalized query text.
+        Falls back to direct provider call if cache is disabled or down.
+        """
+        if self._cache is None:
+            result = await self._embed_batch([text])
+            return result.vectors[0]
+
+        cache_key = self._make_cache_key(text)
+        cached = await self._cache.get(cache_key)
+        if cached is not None and isinstance(cached, list):
+            logger.debug("embedding.cache_hit", text_len=len(text))
+            return [float(x) for x in cached]
+
         result = await self._embed_batch([text])
-        return result.vectors[0]
+        vector = result.vectors[0]
+        await self._cache.set(cache_key, vector)
+        logger.debug("embedding.cache_miss", text_len=len(text))
+        return vector
+
+    def _make_cache_key(self, text: str) -> str:
+        import hashlib
+
+        normalized = text.strip().lower()
+        digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+        return f"embed:query:{self.model}:{digest}"
 
     async def aclose(self) -> None:
-        """Release provider clients."""
+        """Release provider clients + cache connection."""
         self._gemini_client = None
+        if self._cache is not None:
+            await self._cache.close()
 
     # ─────────────────────────────────────────────
     # Dispatch

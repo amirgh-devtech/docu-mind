@@ -118,6 +118,20 @@ class Settings(BaseSettings):
     database_url: str | None = None  # overrides the above if set
 
     # ─────────────────────────────────────────────
+    # Redis
+    # ─────────────────────────────────────────────
+    redis_host: str = "localhost"
+    redis_port: int = Field(default=6379, ge=1, le=65535)
+    redis_db: int = Field(default=0, ge=0, le=15)
+    redis_url: str | None = None  # overrides the above if set
+
+    # ─────────────────────────────────────────────
+    # Embedding cache
+    # ─────────────────────────────────────────────
+    embedding_cache_backend: Literal["memory", "redis", "none"] = "redis"
+    embedding_cache_ttl: int = Field(default=3600, ge=0, le=86400)
+
+    # ─────────────────────────────────────────────
     # Chunking
     # ─────────────────────────────────────────────
     chunk_size: int = Field(default=800, ge=100, le=4000)
@@ -204,6 +218,12 @@ class Settings(BaseSettings):
                 f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}"
                 f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _resolve_redis_url(self) -> Settings:
+        if not self.redis_url:
+            self.redis_url = f"redis://{self.redis_host}:{self.redis_port}/{self.redis_db}"
         return self
 
     @model_validator(mode="after")

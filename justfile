@@ -105,6 +105,32 @@ psql:
     docker exec -it docu-mind-pg psql -U docu_mind -d docu_mind
 
 # ─────────────────────────────────────────────
+# Redis (dev container)
+# ─────────────────────────────────────────────
+
+# Start Redis container (detached)
+up-redis:
+    docker start docu-mind-redis 2>$null; if ($LASTEXITCODE -ne 0) { docker run -d --name docu-mind-redis -p 6379:6379 redis:7-alpine }
+
+# Stop Redis container
+down-redis:
+    docker stop docu-mind-redis
+
+# Nuke Redis container + volume
+nuke-redis:
+    docker stop docu-mind-redis 2>$null
+    docker rm docu-mind-redis 2>$null
+    Write-Host "Redis container removed."
+
+# Tail Redis logs
+logs-redis:
+    docker logs -f docu-mind-redis
+
+# Open redis-cli shell
+redis-cli:
+    docker exec -it docu-mind-redis redis-cli
+
+# ─────────────────────────────────────────────
 # Migrations (Alembic)
 # ─────────────────────────────────────────────
 
@@ -198,3 +224,9 @@ ci: lint test-all
 
 # Alias: full dev startup (pg + api)
 dev: up-pg api
+
+# Start both Postgres + Redis
+up-infra: up-pg up-redis
+
+# Stop both
+down-infra: down-pg down-redis
