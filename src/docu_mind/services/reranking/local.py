@@ -51,20 +51,32 @@ class LocalReranker(BaseReranker):
         *,
         top_k: int = 5,
     ) -> list[RetrievedChunk]:
-        """Rerank with a CrossEncoder (in a thread to avoid blocking)."""
+        """Rerank with a CrossEncoder (in a thread to avoid blocking).
+
+        Note:
+            CrossEncoder.predict() returns raw logits, which can be
+            negative. We apply sigmoid to map them to [0, 1] so that
+            scores are interpretable as probabilities.
+        """
         if not chunks:
             return []
 
         import asyncio
 
+        import numpy as np
+
         model = self._get_model()
         pairs = [(query, c.text_for_llm) for c in chunks]
 
         loop = asyncio.get_running_loop()
-        scores = await loop.run_in_executor(None, model.predict, pairs)
+        logits = await loop.run_in_executor(None, model.predict, pairs)
 
-        for chunk, score in zip(chunks, scores, strict=True):
-            chunk.score = float(score)
+        # Apply sigmoid to map logits → [0, 1]
+        logits_arr = np.asarray(logits, dtype=np.float32)
+        probs = 1.0 / (1.0 + np.exp(-logits_arr))
+
+        for chunk, prob in zip(chunks, probs, strict=True):
+            chunk.score = float(prob)
             chunk.source = "rerank"
 
         reranked = sorted(chunks, key=lambda c: c.score, reverse=True)[:top_k]
@@ -73,5 +85,7 @@ class LocalReranker(BaseReranker):
             "reranker.local_done",
             candidates=len(chunks),
             returned=len(reranked),
+            score_min=round(float(probs.min()), 4) if len(probs) else 0.0,
+            score_max=round(float(probs.max()), 4) if len(probs) else 0.0,
         )
         return reranked
