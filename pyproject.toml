@@ -105,7 +105,7 @@ dev = [
 
     # RAG Evaluation
     "ragas>=0.3.0,<0.4",  # faithfulness, answer correctness, context precision
-    "datasets>=3.2,<4.0", # ragas dependency
+    "datasets>=3.2,<6.0", # ragas dependency
 
     # Dev tooling
     "ipython>=8.30,<9.0",
